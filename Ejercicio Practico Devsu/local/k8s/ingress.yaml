@@ -1,0 +1,77 @@
+apiVersion: networking.k8s.io/v1              # versión de la API de Kubernetes para Ingress
+kind: Ingress                                 # tipo de recurso: Ingress (rounting HTTP basado en host/path)
+metadata:
+  name: prueba-java-ingress                   # nombre único del recurso Ingress
+  # ingressClassName es la forma recomendada en v1 para seleccionar el controller
+  namespace: namespace-prueba-java
+spec:
+  ingressClassName: nginx                      # indica que use el NGINX Ingress Controller
+  rules:                                       # lista de reglas de enrutamiento HTTP
+    - host: devsu-demo-devops-java.com        # nombre de host usado en el header Host de las peticiones
+      http:                                    # especifica reglas solo para tráfico HTTP
+        paths:                                 # lista de path rules bajo este host
+          - path: /api                         # ruta con prefijo "/api"
+            pathType: Prefix                   # Prefix → cualquier ruta que empiece con "/api"
+            backend:                           # destino al que reenviar tráfico que cumpla la regla
+              service:                         # backend de tipo Service de Kubernetes
+                name: prueba-java-svc         # nombre del Service que expondrá la app
+                port:
+                  number: 80                  # puerto del Service (no el del contenedor)
+          - path: /healthz              # Exponer health check sin el prefijo /api
+            pathType: Prefix
+            backend:
+              service:
+                name: prueba-java-svc
+                port:
+                  number: 80                  
+---
+apiVersion: networking.k8s.io/v1              # Ingress puede definirse en múltiples documentos YAML
+kind: Ingress
+metadata:
+  name: prueba-java-ingress-root             # otra opción para enrutar todo bajo "/"
+  namespace: namespace-prueba-java
+spec:
+  ingressClassName: nginx                      # usar el mismo controller NGINX
+  rules:
+    - host: devsu-demo-devops-java.com        # mismo host de arriba
+      http:
+        paths:
+          - path: /                           # ruta raíz, captura todo (/, /api, /foo, etc.)
+            pathType: Prefix                  # Prefix → cualquier ruta que empiece por "/"
+            backend:
+              service:
+                name: prueba-java-svc        # mismo Service backend
+                port:
+                  number: 80                 # puerto del Service
+
+# ----------------------------------------------------------------------
+# Explicación línea a línea:
+#
+# apiVersion: indica la versión de la API de Kubernetes que usaremos (networking.k8s.io/v1 para Ingress).
+# kind: tipo de recurso; aquí “Ingress” para definir reglas de enrutamiento HTTP basadas en host y path.
+#
+# metadata.name: nombre único dentro del namespace; sirve para referenciar el recurso.
+#
+# spec.ingressClassName: selecciona el Ingress Controller (NGINX) que implementará estas reglas.
+#
+# spec.rules: array de reglas. Cada regla aplica a un host diferente.
+#   - host: el nombre de dominio (header Host) que el Ingress Controller observará.
+#
+#   http.paths: lista de paths bajo ese host.
+#     - path: la ruta (prefijo) que queremos capturar:
+#         • "/api": solo rutas que comiencen con "/api" (p.ej. "/api/users").
+#         • "/"   : todo el tráfico (cualquier ruta).
+#     pathType: Prefix → coincidencia por prefijo literal, sin expresiones regulares.
+#
+#     backend.service.name: nombre del Service de Kubernetes al que reenviar peticiones.
+#     backend.service.port.number: puerto del Service (el Service mapea internamente al contenedor).
+#
+# Separar en dos recursos (uno para “/api” y otro para “/”) es opcional: 
+# - Usar solo “/api” evita enrutar recursos estáticos u otros servicios que no comiencen en /api.
+# - Usar “/” enruta TODO el tráfico al mismo Service.
+#
+# Buenas prácticas:
+# 1. Spec.ingressClassName en vez de annotations deprecadas.
+# 2. PathType Prefix para rutas literales, sin regex.
+# 3. Definir reglas claras (“/api” vs “/”) según necesidades.
+# 4. Mantener un Ingress por host; si tienes múltiples servicios, usa múltiples paths en el mismo Ingress.

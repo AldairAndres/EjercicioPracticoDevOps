@@ -1,0 +1,29 @@
+# file: 06-hpa.yaml
+apiVersion: autoscaling/v2           # Versión v2 permite métricas múltiples.
+kind: HorizontalPodAutoscaler        # Recurso que escala el Deployment según métricas.
+metadata:
+  name: prueba-java-hpa
+  namespace: namespace-prueba-java
+  labels:
+    app: prueba-java
+spec:
+  scaleTargetRef:                    # Objeto que se escalara (Deployment).
+    apiVersion: apps/v1
+    kind: Deployment
+    name: prueba-java-app
+  minReplicas: 2                     # No bajar de 2 réplicas.
+  maxReplicas: 5                     # Límite superior.
+  metrics:
+    - type: Resource                 # Métrica basada en recurso (CPU).
+      resource:
+        name: cpu
+        target:
+          type: Utilization          # % de uso respecto a requests.
+          averageUtilization: 50     # Si el promedio >50% => escala hacia arriba.
+
+# ----------------------------------------------------------------------
+# Buenas prácticas
+# - requests.cpu debe existir en el Deployment para que el cálculo sea correcto.
+# - En AKS el metrics-server viene instalado; verificar con `kubectl top pods`.
+# - Ajustar min/max según capacidad del node pool y SLA.
+# - Considerar métricas de memoria o externas (Prometheus Adapter) en producción.

@@ -1,0 +1,133 @@
+# file: azure-pipelines-ci.yml
+# ------------------------------------------------------------
+# Pipeline de Integración Continua (CI)
+# 1) Aprovisiona/actualiza la infraestructura con Terraform.
+# 2) Compila la app Java, ejecuta pruebas.
+# 3) Construye y publica la imagen Docker en ACR.
+# 4) Publica los manifiestos K8s como artefacto para el CD.
+# ------------------------------------------------------------
+
+trigger:                                  # Disparadores automáticos del pipeline CI
+  branches:
+    include:
+      - main                              # Se ejecuta cuando hay push en main
+
+pr:                                       # Validación en Pull Requests
+  branches:
+    include:
+      - main
+
+variables:                                # Variables globales (se pueden mover a Variable Group)
+  TF_WORKDIR: 'infra/terraform'           # Ruta donde están los .tf
+  TF_STATE_RG: 'rg-tfstate'               # RG que contiene el storage del estado remoto
+  TF_STATE_SA: 'satfstate'                # Storage account para el estado
+  TF_STATE_CONTAINER: 'tfstate'           # Contenedor de blobs
+  TF_STATE_KEY: 'aks-prod.tfstate'        # Nombre del blob de estado
+  ACR_NAME: 'myacr'                       # Nombre del Azure Container Registry (sin .azurecr.io)
+  IMAGE_NAME: 'prueba-devops-java'        # Nombre de la imagen en ACR
+  IMAGE_TAG: '$(Build.BuildId)'           # Tag único por ejecución
+  MAVEN_OPTS: '-Dmaven.test.failure.ignore=false'  # Maven se detiene si fallan pruebas
+  ARTIFACT_MANIFESTS: 'manifests-cloud'   # Nombre del artefacto que contendrá YAMLs para CD
+
+stages:                                   # División en etapas
+- stage: Terraform                        # Primera etapa: Infraestructura
+  displayName: 'Terraform (Init/Plan/Apply)'
+  jobs:
+    - job: tf_apply
+      displayName: 'Terraform apply'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+        - checkout: self                 # Descarga el repo
+          clean: true
+
+        - task: AzureCLI@2               # Inicio de sesión con Azure (Service Connection requerida)
+          displayName: 'Azure login (SPN)'
+          inputs:
+            azureSubscription: 'SC-AZ-DEVOPS'  # Nombre del Service Connection a Azure
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              echo "Autenticado contra Azure"
+
+        - script: |
+            curl -sLo terraform.zip https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_linux_amd64.zip
+            unzip terraform.zip -d /usr/local/bin
+            terraform -version
+          displayName: 'Instalar Terraform 1.7.5'
+
+        - script: |
+            cd $(TF_WORKDIR)
+            terraform init \
+              -backend-config="resource_group_name=$(TF_STATE_RG)" \
+              -backend-config="storage_account_name=$(TF_STATE_SA)" \
+              -backend-config="container_name=$(TF_STATE_CONTAINER)" \
+              -backend-config="key=$(TF_STATE_KEY)"
+          displayName: 'terraform init'
+
+        - script: |
+            cd $(TF_WORKDIR)
+            terraform plan -out=tfplan
+          displayName: 'terraform plan'
+
+        - script: |
+            cd $(TF_WORKDIR)
+            terraform apply -auto-approve tfplan
+          displayName: 'terraform apply'
+
+- stage: Build_Test_Image               # Segunda etapa: build, test y docker
+  displayName: 'Build + Tests + Docker push'
+  dependsOn: Terraform                   # No arranca hasta que termine Terraform
+  jobs:
+    - job: build_test_push
+      displayName: 'Maven build + Docker push'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+        - checkout: self
+          clean: true
+
+        - task: Maven@3
+          displayName: 'Compilar y probar con Maven'
+          inputs:
+            mavenPomFile: 'pom.xml'
+            goals: 'clean package'
+            options: '$(MAVEN_OPTS)'
+            publishJUnitResults: true
+            testResultsFiles: '**/surefire-reports/*.xml'
+
+        - task: AzureCLI@2
+          displayName: 'Login ACR'
+          inputs:
+            azureSubscription: 'SC-AZ-DEVOPS'
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              az acr login --name $(ACR_NAME)
+
+        - script: |
+            docker build -t $(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG) .
+            docker push $(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)
+          displayName: 'Docker build & push'
+
+        - task: CopyFiles@2
+          displayName: 'Copiar manifiestos K8s (cloud)'
+          inputs:
+            SourceFolder: 'cloud/k8s'             # Carpeta donde están los YAML cloud
+            Contents: '**/*.yaml'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)/$(ARTIFACT_MANIFESTS)'
+
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publicar artefacto manifiestos'
+          inputs:
+            PathtoPublish: '$(Build.ArtifactStagingDirectory)/$(ARTIFACT_MANIFESTS)'
+            ArtifactName: '$(ARTIFACT_MANIFESTS)'
+            publishLocation: 'Container'
+
+# ----------------------------------------------------------------------
+# Buenas prácticas CI
+# - Separar etapas (Terraform / Build) permite reintentos independientes.
+# - Usar un Service Connection con permisos mínimos requeridos.
+# - Terraform remoto: estado en Azure Storage con locks para evitar carreras.
+# - Tag de imagen inmutable: evita sobrescribir “latest”.
+# - Publicar los YAMLs como artefacto asegura inmutabilidad entre CI y CD.

@@ -1,0 +1,84 @@
+apiVersion: apps/v1                # Versión de la API para Deployments
+kind: Deployment                   # Define un Deployment, que gestiona réplicas de Pods
+metadata:
+  name: prueba-java-app            # Nombre único del Deployment en el namespace
+  namespace: namespace-prueba-java
+spec:
+  replicas: 2                      # Número de réplicas deseadas para alta disponibilidad
+  selector:
+    matchLabels:
+      app: prueba-java             # Selecciona Pods que lleven esta etiqueta
+  strategy:
+    type: RollingUpdate           # Estrategia para actualizaciones sin downtime
+    rollingUpdate:
+      maxSurge: 1                 # Permite hasta +1 Pod extra durante un rollout
+      maxUnavailable: 0           # No deja indisponible ningún Pod durante el rollout      
+  template:                        # Plantilla de Pod que utiliza el Deployment
+    metadata:
+      labels:
+        app: prueba-java           # Etiqueta aplicada a cada Pod (coincide con el selector)
+    spec:
+      serviceAccountName: prueba-java-sa   # Usa nuestro SA personalizado   
+      containers:
+        - name: app                # Nombre interno del contenedor
+          image: prueba-devops-java:latest  # Imagen Docker con nuestra aplicación
+          imagePullPolicy: IfNotPresent       # No fuerza pull si la imagen ya está localmente
+          env:
+            - name: SPRING_DATASOURCE_URL  # Inyecta la URL de H2 desde el ConfigMap
+              valueFrom:
+                configMapKeyRef:
+                  name: prueba-java-config
+                  key: SPRING_DATASOURCE_URL
+            - name: SERVER_PORT           # Inyecta el puerto interno de Spring Boot
+              valueFrom:
+                configMapKeyRef:
+                  name: prueba-java-config
+                  key: SERVER_PORT
+          ports:
+            - containerPort: 8080 # Puerto interno que expone el contenedor
+          readinessProbe:          # Comprueba cuándo el Pod está listo para recibir tráfico
+            httpGet:
+              path: /api/users     # Endpoint que debe responder 200 OK
+              port: 8080           # Puerto donde la app está escuchando
+            initialDelaySeconds: 5 # Tiempo antes de la primera verificación
+            periodSeconds: 10      # Frecuencia de las comprobaciones
+          livenessProbe:           # Comprueba si el contenedor sigue “vivo” y en caso contrario lo reinicia
+            tcpSocket:
+              port: 8080           # Chequeo muy ligero: basta con abrir un socket TCP al puerto
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:               # Reservas y límites de recursos (CPU y memoria)
+            requests:
+              cpu: "200m"          # Reserva 200 millicores para el scheduler
+              memory: "256Mi"      # Reserva 256Mi de RAM mínimo
+            limits:
+              cpu: "500m"          # No permite usar más de 500 millicores de CPU
+              memory: "512Mi"      # No permite usar más de 512Mi de RAM
+
+# ----------------------------------------------------------------------
+# Buenas prácticas al definir nuestro Deployment:
+#
+# 1. Definir siempre `requests` y `limits` para CPU/memory:
+#    - `requests` aseguran recursos mínimos y ayudan al scheduler.
+#    - `limits` impiden que un contenedor acapare toda la capacidad del nodo.
+#
+# 2. Probes:
+#    - `readinessProbe` evita enviar tráfico a Pods que aún no están listos.
+#    - `livenessProbe` reinicia automáticamente Pods que queden en estado no operativo.
+#
+# 3. Variables de entorno:
+#    - Se inyectan configuración (como puertos) sin modificar el código ni reconstruir la imagen.
+#
+# 4. Coherencia en puertos:
+#    - Nos aseguramos que con `containerPort`, la variable `SERVER_PORT` y las rutas de los probes coincidan.
+#
+# 5. Etiquetas uniformes:
+#    - Uso la misma etiqueta (`app: prueba-java`) en Deployment, Service y HPA para facilitar selectores.
+#
+# 6. `imagePullPolicy: IfNotPresent` en entornos locales/CI evita pulls innecesarios;
+#    en producción, podemos usar `Always` si se quiere para garantizar la última versión.
+#
+# 7. Réplicas mínimas:
+#    - Arranca al menos dos réplicas para tolerancia a fallos y despliegues rolling sin downtime.
+#
+#
