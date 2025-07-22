@@ -1,7 +1,0 @@
-# ----------------------------------------------------------------------
-# 1. Namespace: aísla todos los recursos de la aplicación de otros stacks
-# ----------------------------------------------------------------------
-apiVersion: v1                                # Versión de la API de Kubernetes
-kind: Namespace                               # Tipo de recurso: Namespace
-metadata:
-  name: namespace-prueba-java                 # Nombre del Namespace

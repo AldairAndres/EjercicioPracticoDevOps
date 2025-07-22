@@ -1,9 +1,0 @@
-apiVersion: v1                    # Recursos core
-kind: ConfigMap                   # Contiene datos de configuración no sensibles
-metadata:
-  name: prueba-java-config        # Nombre claro que identifica este ConfigMap
-  namespace: namespace-prueba-java          # Lo creamos en el namespace de la app
-data:
-  SPRING_DATASOURCE_URL: >-       # Base de datos H2 en archivo, fuera de /app para permisos
-    jdbc:h2:file:/data/test;DB_CLOSE_ON_EXIT=FALSE;AUTO_RECONNECT=TRUE
-  SERVER_PORT: "8080"             # Puerto interno de Spring Boot; facilita mapeos y probes
