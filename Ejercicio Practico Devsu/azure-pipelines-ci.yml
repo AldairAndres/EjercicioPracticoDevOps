@@ -20,7 +20,7 @@ pr:                                       # Validación en Pull Requests
 variables:                                # Variables globales (se pueden mover a Variable Group)
   TF_WORKDIR: 'infra/terraform'           # Ruta donde están los .tf
   TF_STATE_RG: 'rg-tfstate'               # RG que contiene el storage del estado remoto
-  TF_STATE_SA: 'satfstate'                # Storage account para el estado
+  TF_STATE_SA: 'tfstatedevsu'                # Storage account para el estado
   TF_STATE_CONTAINER: 'tfstate'           # Contenedor de blobs
   TF_STATE_KEY: 'aks-prod.tfstate'        # Nombre del blob de estado
   ACR_NAME: 'myacr'                       # Nombre del Azure Container Registry (sin .azurecr.io)
