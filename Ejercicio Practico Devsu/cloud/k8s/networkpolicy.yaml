@@ -1,0 +1,31 @@
+# file: 08-networkpolicy.yaml
+apiVersion: networking.k8s.io/v1     # API para NetworkPolicy.
+kind: NetworkPolicy                  # Reglas de red L3/L4 entre Pods.
+metadata:
+  name: allow-web-to-app
+  namespace: namespace-prueba-java
+  labels:
+    app: prueba-java
+spec:
+  podSelector:
+    matchLabels:
+      app: prueba-java               # Aplica esta política a Pods de la app.
+  policyTypes:
+    - Ingress                        # Controla tráfico entrante.
+  ingress:
+    - from:
+        - namespaceSelector:         # Permite tráfico desde el namespace del Ingress Controller.
+            matchLabels:
+              name: ingress-nginx    # Ajustar a las labels reales del controlador.
+        - podSelector:               # Permite tráfico de otros Pods del mismo ns (ej. tests internos).
+            matchLabels:
+              app: prueba-java
+      ports:
+        - protocol: TCP
+          port: 8080                 # Puerto del contenedor (no el del Service).
+
+# ----------------------------------------------------------------------
+# Buenas prácticas
+# - NetworkPolicy requiere que el CNI soporte políticas (Azure CNI + NP habilitado).
+# - Restringir solo el tráfico necesario reduce superficie de ataque.
+# - Ajustar namespaceSelector/podSelector según tu infraestructura real (ingress controller, prom, etc.).

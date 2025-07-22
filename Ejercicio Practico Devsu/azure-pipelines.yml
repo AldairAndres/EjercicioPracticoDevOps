@@ -1,0 +1,78 @@
+
+trigger:
+  branches:
+    include:
+      - main
+
+# Variables reutilizables para el nombre de la imagen y la URL de ACR
+variables:
+  IMAGE_NAME: prueba-devops-java        # Nombre de la imagen Docker
+  ACR_NAME:                       # URL Azure Container Registry
+
+stages:
+  - stage: BuildAndTest
+    displayName: '🔨 Build & Test'
+    jobs:
+      - job: MavenBuild
+        displayName: 'Compilar con Maven'
+        pool: 
+          vmImage: 'ubuntu-latest'  # Agente hospedado de Microsoft
+        steps:
+          - checkout: self             # Clona el repositorio actual
+          - task: Maven@3              # Usa la tarea integrada de Maven
+            inputs:
+              mavenPomFile: 'pom.xml'  # Archivo de proyecto Maven
+              goals: 'clean package'   # Fases de Maven a ejecutar
+              options: '-DskipTests=false'  # Ejecuta tests
+          - task: PublishTestResults@2  # Publica resultados de pruebas JUnit
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+
+  - stage: DockerBuildPush
+    displayName: '🐳 Build & Push Docker'
+    dependsOn: BuildAndTest            # Espera a que termine BuildAndTest
+    jobs:
+      - job: BuildPush
+        displayName: '🖼️ Construir y publicar imagen'
+        pool:
+           vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+          - task: Docker@2              # Usa la tarea oficial de Docker
+            displayName: 'BuildAndPush'
+            inputs:
+              containerRegistry: 'ACR-ServiceConnection'      # Service connection a tu ACR
+              repository: '$(ACR_NAME)/$(IMAGE_NAME)'         # repo:tag
+              command: buildAndPush                          # Comando build + push
+              Dockerfile: 'Dockerfile'                       # Ruta al Dockerfile
+              tags: |
+                $(Build.BuildId)                             # Tag único por cada build
+
+  - stage: DeployToAKS
+    displayName: '🚀 Deploy to AKS'
+    dependsOn: DockerBuildPush         # Espera a que la imagen esté en ACR
+    jobs:
+      - deployment: KubernetesDeploy
+        displayName: 'kubectl apply manifests'
+        environment: 'dev'             # Entorno para rastreo en Azure DevOps
+        pool: 
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: Kubernetes@1   # Usa la tarea integrada de Kubectl
+                  inputs:
+                    connectionType: 'Azure Resource Manager'
+                    azureSubscription: 'Azure-Subscription-Connection'  # Conexión a la suscripción
+                    resourceGroup: ''
+                    kubernetesCluster: ''
+                    namespace: 'default'
+                    command: apply
+                    useConfigurationFile: true
+                    configuration: |
+                      k8s/deployment.yaml   # Aplica el Deployment
+                      k8s/service.yaml      # Aplica el Service
+                      k8s/ingress.yaml      # Aplica el Ingress
+                      k8s/hpa.yaml          # Aplica el HPA

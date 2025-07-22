@@ -1,0 +1,17 @@
+# file: 02-config-map.yaml
+apiVersion: v1                      # API core para ConfigMaps.
+kind: ConfigMap                     # Configuración no sensible (texto plano).
+metadata:
+  name: prueba-java-config          # Nombre del ConfigMap.
+  namespace: namespace-prueba-java      # Mismo namespace que el Deployment.
+  labels:
+    app: prueba-java
+data:
+  SERVER_PORT: "8080"               # Puerto interno donde escucha Spring Boot.
+  SPRING_PROFILES_ACTIVE: "prod"    # Perfil de Spring en AKS.
+
+# ----------------------------------------------------------------------
+# Buenas prácticas
+# - Variables no sensibles van en ConfigMaps (pueden versionarse en Git).
+# - Evitar hardcodear valores dentro del Deployment; referenciarlos desde aquí.
+# - Mantener los nombres en MAYÚSCULAS para seguir convención env vars.

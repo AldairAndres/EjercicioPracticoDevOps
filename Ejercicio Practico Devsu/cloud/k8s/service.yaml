@@ -1,0 +1,23 @@
+# file: 04-service.yaml
+apiVersion: v1                       # API core para Services.
+kind: Service                        # Service expone Pods internamente en el clúster.
+metadata:
+  name: prueba-java-svc              # Nombre del Service.
+  namespace: namespace-prueba-java
+  labels:
+    app: prueba-java
+spec:
+  type: ClusterIP                    # ClusterIP: sólo accesible dentro del clúster.
+  selector:
+    app: prueba-java                 # Selecciona Pods con esta etiqueta (los del Deployment).
+  ports:
+    - name: http                     # Puerto lógico, útil para Ingress.
+      port: 80                       # Puerto del Service. Clientes internos conectan aquí.
+      targetPort: 8080               # Puerto del contenedor al que se redirige el tráfico.
+      protocol: TCP                  # Protocolo de transporte.
+
+# ----------------------------------------------------------------------
+# Buenas prácticas
+# - ClusterIP + Ingress es el patrón recomendado en AKS.
+# - port y targetPort deben estar alineados con containerPort.
+# - Nombres de puerto ayudan a la claridad y a otros controladores (Ingress).

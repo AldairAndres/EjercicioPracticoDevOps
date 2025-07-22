@@ -1,0 +1,18 @@
+# file: 07-pdb.yaml
+apiVersion: policy/v1                # API para PodDisruptionBudget estable.
+kind: PodDisruptionBudget            # Asegura un mínimo de Pods durante mantenimientos/evicciones.
+metadata:
+  name: prueba-java-pdb
+  namespace: namespace-prueba-java
+  labels:
+    app: prueba-java
+spec:
+  minAvailable: 1                    # Garantizar al menos 1 Pod disponible siempre.
+  selector:
+    matchLabels:
+      app: prueba-java               # Selecciona los Pods del Deployment.
+
+# ----------------------------------------------------------------------
+# Buenas prácticas
+# - PDB evita que el cluster eche abajo todas las réplicas en un drain de nodo.
+# - Ajustar minAvailable o maxUnavailable según réplicas mínimas.
